@@ -20,3 +20,17 @@ data = data %>% dplyr::select(time, date, from, to, number)
 
 # fwrite(data, 'clean_data.csv', row.names = F)
 
+
+t = paste0(temp$date[1:100], ' ', temp$hour[1:100], ':00')
+
+result = microbenchmark(
+  'as.POSIXct' = as.POSIXct(t),
+  'lubridate' = ymd_hm(t),
+  'fasttime' = fastPOSIXct(t)
+)
+
+autoplot(result)
+
+ggsave('time_object_speed.png', width = 16, height = 9, units = 'in', dpi = 500, scale = 0.6)
+
+

@@ -1,3 +1,7 @@
+library(osmdata)
+library(sf)
+library(dplyr)
+
 place <- "Taipei Taiwan"
 
 highway_sizes <- tibble::tribble(

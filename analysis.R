@@ -2,7 +2,8 @@ library(ggplot2)
 library(dplyr)
 library(tidyr)
 library(data.table)
-setwd('Documents/Github/taipei-metro/')
+library(stringr)
+setwd('~/Documents/Github/opendata-taipei-metro/')
 
 options(scipen = 999)
 showtext::showtext_auto()
@@ -11,9 +12,10 @@ theme_set(theme_minimal(base_family = 'Raleway', base_size = 10))
 data = fread('data/clean_data.csv')
 
 station = read.csv('https://raw.githubusercontent.com/repeat/northern-taiwan-metro-stations/master/northern-taiwan.csv') %>% 
-  dplyr::select(line_name, station_name_tw, lat, lon) %>% 
   dplyr::rename(line = line_name,
-                station = station_name_tw)
+                station = station_name_tw) %>% 
+  dplyr::mutate(district = str_sub(address, 4, 6)) %>% 
+  dplyr::select(line, station, district, lat, lon) 
 
 cols <- c("文湖線" = '#c48c31', "淡水信義線" = '#e3002c', "松山新店線" = '#008659',
           "中和新蘆線" = '#f8b61c', "板南線" = '#0070bd', "環狀線" = '#ffdb00',
@@ -31,14 +33,18 @@ temp = data %>%
                 group = ifelse(line %in% c('機場線','環狀線'), '機場線＆環狀線', line)) %>% 
   dplyr::filter(date < as.Date('2018-01-01'))
   
-ggplot(temp, aes(x = date, y = number, group = station, col = line)) + 
+ggplot(temp, aes(x = date, y = number / 10000, group = station, col = line)) + 
   geom_line(alpha = 0.5) + 
   facet_wrap(~group) + 
-  scale_x_date(date_labels = "%m",
-               date_breaks = '1 month') + 
+  labs(title = '台北捷運各站進出站人次') + 
+  scale_x_date(name = '',
+               date_labels = "%b",
+               date_breaks = '3 month',
+               minor_breaks = '1 month') + 
+  ylab('人數（萬人）') + 
   scale_color_manual(values = cols) + 
   theme(legend.position = 'None',
-        panel.grid.minor = element_blank())
+        panel.grid.minor.y = element_blank())
 
 # ggsave('num_by_station_and_hour.png', width = 16, height = 9, units = 'in', dpi = 500, scale = 0.6)
 
@@ -48,14 +54,16 @@ temp %>%
   dplyr::summarise(number = sum(number) / 10000) %>% 
   ggplot() + 
   geom_line(aes(x = date, y = number, col = line)) + 
-  scale_x_date(date_labels = "%m",
-               date_breaks = '1 month') + 
+  scale_x_date(name = '',
+               date_labels = "%b",
+               date_breaks = '3 month',
+               minor_breaks = '1 month') + 
   scale_color_manual(values = cols) + 
+  ylab('人數（萬人）') + 
   facet_wrap(~group) + 
-  labs(title = '台北捷運各線進出站人次',
-       subtitle = '單位：萬人') + 
+  labs(title = '台北捷運各線進出站人次') + 
   theme(legend.position = 'None',
-        panel.grid.minor = element_blank()) 
+        panel.grid.minor.y = element_blank()) 
 
 # ggsave('num_by_hour_and_line.png', width = 16, height = 9, units = 'in', dpi = 500, scale = 0.6)
 
@@ -74,14 +82,17 @@ temp = data %>%
   merge(station, by = 'station') %>% 
   dplyr::mutate(group = ifelse(line %in% c('機場線','環狀線'), '機場線＆環狀線', line)) 
 
-ggplot(temp, aes(x = from, y = to, group = date)) +
-  geom_point(col = 'lightgrey', alpha = 0.25) +
-  stat_smooth(aes(group = station, col = line), method = 'lm', se = F, fullrange = T, alpha = 0.5) + 
+ggplot(temp, aes(x = from / 10000, y = to / 10000, group = date)) +
+  # geom_point(col = 'lightgrey', alpha = 0.1) +
+  stat_smooth(geom = 'line', aes(group = station, col = line), method = 'lm', se = F, fullrange = T, alpha = 0.6) + 
+  geom_abline(slope = 1, linetype = 'dashed') + 
   scale_color_manual(values = cols) +
   facet_wrap(~group, scales = 'free') + 
   theme(panel.grid.minor = element_blank(),
-        legend.position = 'None')
+        legend.position = 'None') + 
+  xlab('單日總進站人數（萬人）') + ylab('單日總出站人數（萬人）')
 
+# ggsave('outbound_vs_inbound.png', width = 16, height = 9, units = 'in', dpi = 500, scale = 0.6)
 
 
 data %>% 
