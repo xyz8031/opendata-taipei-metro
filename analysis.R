@@ -3,6 +3,8 @@ library(dplyr)
 library(tidyr)
 library(data.table)
 library(stringr)
+library(forcats)
+library(lubridate)
 setwd('~/Documents/Github/opendata-taipei-metro/')
 
 options(scipen = 999)
@@ -20,6 +22,18 @@ station = read.csv('https://raw.githubusercontent.com/repeat/northern-taiwan-met
 cols <- c("文湖線" = '#c48c31', "淡水信義線" = '#e3002c', "松山新店線" = '#008659',
           "中和新蘆線" = '#f8b61c', "板南線" = '#0070bd', "環狀線" = '#ffdb00',
           "機場線" = '#8246AF')
+
+#
+temp = data %>%
+  pivot_longer(cols = c('from', 'to'),
+               names_to = 'direction',
+               values_to = 'station') %>% 
+  dplyr::group_by(date, station) %>% 
+  dplyr::summarise(number = sum(number)) %>% 
+  arrange(desc(number)) %>% 
+  dplyr::filter(row_number() <= 30)
+
+ggplot(temp)
 
 # time series by date by station
 temp = data %>% 
@@ -67,7 +81,7 @@ temp %>%
 
 # ggsave('num_by_hour_and_line.png', width = 16, height = 9, units = 'in', dpi = 500, scale = 0.6)
 
-# direction
+# outbound & inbound
 temp = data %>% 
   pivot_longer(cols = c('from', 'to'),
                names_to = 'direction',
@@ -94,52 +108,32 @@ ggplot(temp, aes(x = from / 10000, y = to / 10000, group = date)) +
 
 # ggsave('outbound_vs_inbound.png', width = 16, height = 9, units = 'in', dpi = 500, scale = 0.6)
 
+# 內科
+temp = data %>% 
+  dplyr::filter(to %in% c('西湖','港墘')) %>% 
+  dplyr::group_by(from) %>% 
+  dplyr::summarise(number = sum(number) / 100000) %>% 
+  dplyr::filter(number >= 1) 
+temp$from = fct_reorder(temp$from, temp$number)
 
-data %>% 
-  dplyr::group_by(from, to) %>% 
-  dplyr::summarise(number = sum(number)) %>% 
-  dplyr::filter(to == '港墘' & number >= 5000) %>% 
-  dplyr::mutate(from = forcats::fct_reorder(from, desc(number))) %>% 
-  ggplot() + 
+ggplot(temp) + 
   geom_bar(aes(y = from, x = number), stat = 'identity') + 
+  scale_x_continuous(name = '十萬人',
+                     breaks = seq(1, 6)) + 
+  ylab('') + 
   theme(panel.grid.minor.y = element_blank(),
         panel.grid.major.y  = element_blank())
 
-data %>% dplyr::filter(to == '港墘') %>% 
-  dplyr::mutate(weekend = chron::is.weekend(time),
-                hour = lubridate::hour(time)) %>% 
-  dplyr::group_by(weekend, hour) %>% 
-  dplyr::summarise(number = mean(number)) %>% 
-  ggplot() + 
-  geom_line(aes(x = hour, y = number)) + 
-  scale_x_continuous(breaks = seq(0, 23, 3),
-                     minor_breaks = NULL) + 
-  facet_wrap(~weekend, nrow = 2) +
-  scale_color_brewer(palette = 'Set1')
+# 信義區
 
-data %>% 
-  dplyr::mutate(hour = lubridate::hour(time)) %>% 
-  dplyr::group_by(from, hour) %>% 
-  dplyr::summarise(number = mean(number)) %>% 
-  merge(station, by.x = 'from', by.y = 'station') %>% 
-  ggplot(aes(x = hour, y = number, group = from, col = line)) + 
-  geom_line(show.legend = F) +
-  scale_x_continuous(breaks = seq(0, 23, 3)) +
-  facet_wrap(~line, scales = 'free_y') +
-  scale_color_manual(values = cols) +
-  theme(panel.grid.minor = element_blank())
 
-data %>% 
-  dplyr::mutate(hour = lubridate::hour(time)) %>% 
-  dplyr::group_by(to, hour) %>% 
-  dplyr::summarise(number = mean(number)) %>% 
-  merge(station, by.x = 'to', by.y = 'station') %>% 
-  ggplot(aes(x = hour, y = number, group = to, col = line)) + 
-  geom_line(show.legend = F) +
-  scale_x_continuous(breaks = seq(0, 23, 3)) +
-  facet_wrap(~line, scales = 'free_y') +
-  scale_color_manual(values = cols) +
-  theme(panel.grid.minor = element_blank())
+# 東區
+
+
+# 台北車站
+
+
+
 
 # https://bookdown.org/tpemartin/108-1-ntpu-datavisualization/annotation-and-maps.html
 # https://gist.motc.gov.tw/gist_api/swagger/ui/index#!/District/District_03002

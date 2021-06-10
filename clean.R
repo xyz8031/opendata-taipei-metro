@@ -16,7 +16,7 @@ data$time = paste(data$date, ' ',data$hour, ':00', sep = '')
 
 data$number = as.numeric(data$number)
 
-data = data %>% dplyr::select(time, date, from, to, number)
+data = data %>% dplyr::select(time, date, hour, from, to, number)
 
 # fwrite(data, 'clean_data.csv', row.names = F)
 
