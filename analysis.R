@@ -23,6 +23,12 @@ cols <- c("文湖線" = '#c48c31', "淡水信義線" = '#e3002c', "松山新店�
           "中和新蘆線" = '#f8b61c', "板南線" = '#0070bd', "環狀線" = '#ffdb00',
           "機場線" = '#8246AF')
 
+ggplot(station) + 
+  geom_point(aes(x = lon, y = lat, col = line)) + 
+  scale_color_manual(values = cols) + 
+  theme(legend.position = 'None',
+        panel.grid.minor = element_blank())
+
 #
 temp = data %>%
   pivot_longer(cols = c('from', 'to'),
@@ -113,7 +119,8 @@ temp = data %>%
   dplyr::filter(to %in% c('西湖','港墘')) %>% 
   dplyr::group_by(from) %>% 
   dplyr::summarise(number = sum(number) / 100000) %>% 
-  dplyr::filter(number >= 1) 
+  # dplyr::filter(number >= 1) %>% 
+  top_n(10)
 temp$from = fct_reorder(temp$from, temp$number)
 
 ggplot(temp) + 

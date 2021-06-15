@@ -1,7 +1,10 @@
 library(dplyr)
 library(data.table)
 library(fasttime)
+library(lubridate)
 setwd('Documents/Github/taipei-metro/')
+
+holiday = read.csv('data/2017_holiday.csv', encoding = 'UTF-8')
 
 files = list.files('data/raw/', full.names = T)
 data = rbindlist(lapply(files,fread, skip = 2, header = F, sep = ' ', fill = T)) 
@@ -16,7 +19,10 @@ data$time = paste(data$date, ' ',data$hour, ':00', sep = '')
 
 data$number = as.numeric(data$number)
 
-data = data %>% dplyr::select(time, date, hour, from, to, number)
+data = data %>% 
+  dplyr::mutate(weekday = weekdays(date, abbreviate = T),
+                hour = hour(date)) %>% 
+  dplyr::select(time, date, hour, from, to, number)
 
 # fwrite(data, 'clean_data.csv', row.names = F)
 
