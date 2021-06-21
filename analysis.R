@@ -11,17 +11,24 @@ options(scipen = 999)
 showtext::showtext_auto()
 theme_set(theme_minimal(base_family = 'Raleway', base_size = 10))
 
-data = fread('data/clean_data.csv')
+data = readRDS('data/clean_data.rds')
 
 station = read.csv('https://raw.githubusercontent.com/repeat/northern-taiwan-metro-stations/master/northern-taiwan.csv') %>% 
   dplyr::rename(line = line_name,
                 station = station_name_tw) %>% 
   dplyr::mutate(district = str_sub(address, 4, 6)) %>% 
-  dplyr::select(line, station, district, lat, lon) 
+  dplyr::select(line, station, district) %>% 
+  dplyr::filter(line != '環狀線' & line != '機場線')
+
+transfer = station %>% 
+  dplyr::group_by(station) %>% 
+  count() %>% 
+  dplyr::filter(n > 1) 
+
+station$line = ifelse(station$station %in% transfer$station, '轉乘站', station$line)
 
 cols <- c("文湖線" = '#c48c31', "淡水信義線" = '#e3002c', "松山新店線" = '#008659',
-          "中和新蘆線" = '#f8b61c', "板南線" = '#0070bd', "環狀線" = '#ffdb00',
-          "機場線" = '#8246AF')
+          "中和新蘆線" = '#f8b61c', "板南線" = '#0070bd', '轉乘站' = 'black')
 
 ggplot(station) + 
   geom_point(aes(x = lon, y = lat, col = line)) + 
@@ -34,12 +41,17 @@ temp = data %>%
   pivot_longer(cols = c('from', 'to'),
                names_to = 'direction',
                values_to = 'station') %>% 
-  dplyr::group_by(date, station) %>% 
-  dplyr::summarise(number = sum(number)) %>% 
-  arrange(desc(number)) %>% 
-  dplyr::filter(row_number() <= 30)
+  dplyr::group_by(date, station, direction, type) %>% 
+  dplyr::summarise(number = sum(number)) 
 
-ggplot(temp)
+temp$station = fct_reorder(temp$station, temp$number, .fun = max)
+
+temp %>% 
+  dplyr::filter(station %in% transfer$station) %>% 
+  ggplot() +
+  geom_boxplot(aes(x = station, y = number, color = type), position = 'dodge') + 
+  facet_wrap(~direction, ncol = 1) + 
+  theme(panel.grid.minor = element_blank())
 
 # time series by date by station
 temp = data %>% 
@@ -49,43 +61,50 @@ temp = data %>%
   dplyr::group_by(date, station) %>% 
   dplyr::summarise(number = sum(number)) %>% 
   merge(station, by = 'station') %>% 
-  dplyr::mutate(date = as.Date(date),
-                group = ifelse(line %in% c('機場線','環狀線'), '機場線＆環狀線', line)) %>% 
+  dplyr::mutate(date = as.Date(date)) %>% 
   dplyr::filter(date < as.Date('2018-01-01'))
+
+highlight = temp %>% 
+  dplyr::group_by(line, station) %>% 
+  dplyr::summarise(number = sum(number)) %>% 
+  dplyr::group_by(line) %>% 
+  dplyr::arrange(desc(number)) %>% 
+  dplyr::filter(row_number() == max(row_number()) | row_number() == min(row_number()))
   
-ggplot(temp, aes(x = date, y = number / 10000, group = station, col = line)) + 
-  geom_line(alpha = 0.5) + 
-  facet_wrap(~group) + 
+ggplot() + 
+  geom_line(data = temp %>% dplyr::filter(station %in% highlight$station), aes(x = date, y = number / 10000, group = station, col = line), lwd = 0.5) + 
+  geom_line(data = temp %>% dplyr::filter(!(station %in% highlight$station)), aes(x = date, y = number / 10000, group = station), col = 'lightgrey', alpha = 0.25, lwd = 0.5) + 
+  facet_wrap(~line, scales = 'free_y') + 
   labs(title = '台北捷運各站進出站人次') + 
   scale_x_date(name = '',
                date_labels = "%b",
-               date_breaks = '3 month',
-               minor_breaks = '1 month') + 
+               date_breaks = '2 month') + 
   ylab('人數（萬人）') + 
   scale_color_manual(values = cols) + 
   theme(legend.position = 'None',
-        panel.grid.minor.y = element_blank())
+        panel.grid.minor = element_blank())
 
 # ggsave('num_by_station_and_hour.png', width = 16, height = 9, units = 'in', dpi = 500, scale = 0.6)
 
-# time series by date by line
-temp %>% 
-  dplyr::group_by(date, group, line) %>% 
-  dplyr::summarise(number = sum(number) / 10000) %>% 
-  ggplot() + 
-  geom_line(aes(x = date, y = number, col = line)) + 
-  scale_x_date(name = '',
-               date_labels = "%b",
-               date_breaks = '3 month',
-               minor_breaks = '1 month') + 
-  scale_color_manual(values = cols) + 
-  ylab('人數（萬人）') + 
-  facet_wrap(~group) + 
-  labs(title = '台北捷運各線進出站人次') + 
-  theme(legend.position = 'None',
-        panel.grid.minor.y = element_blank()) 
+# 總運量排名
+temp = data %>% 
+  pivot_longer(cols = c('from', 'to'),
+               names_to = 'direction',
+               values_to = 'station') %>% 
+  dplyr::group_by(station, direction) %>% 
+  dplyr::summarise(number = sum(number)) %>% 
+  merge(station, by = 'station')
 
-# ggsave('num_by_hour_and_line.png', width = 16, height = 9, units = 'in', dpi = 500, scale = 0.6)
+temp$station = fct_reorder(temp$station, abs(temp$number))
+
+ggplot() + 
+  geom_point(data = temp %>% dplyr::filter(direction == 'from'), aes(x = number, y = station, col = direction), stat = 'identity', position = 'stack') + 
+  geom_point(data = temp %>% dplyr::filter(direction == 'to'), aes(x = number, y = station, col = direction), stat = 'identity', position = 'stack') + 
+  scale_color_brewer(palette = 'Set1') + 
+  facet_wrap(~line, scales = 'free') + 
+  theme(panel.grid.minor = element_blank())
+
+
 
 # outbound & inbound
 temp = data %>% 
@@ -117,19 +136,69 @@ ggplot(temp, aes(x = from / 10000, y = to / 10000, group = date)) +
 # 內科
 temp = data %>% 
   dplyr::filter(to %in% c('西湖','港墘')) %>% 
-  dplyr::group_by(from) %>% 
-  dplyr::summarise(number = sum(number) / 100000) %>% 
+  dplyr::group_by(from, type) %>% 
+  dplyr::summarise(number = sum(number) / 10000) %>% 
   # dplyr::filter(number >= 1) %>% 
-  top_n(10)
-temp$from = fct_reorder(temp$from, temp$number)
+  dplyr::arrange(desc(number)) %>% 
+  dplyr::group_by(type) %>% 
+  dplyr::filter(row_number() <= 10)
 
-ggplot(temp) + 
-  geom_bar(aes(y = from, x = number), stat = 'identity') + 
-  scale_x_continuous(name = '十萬人',
-                     breaks = seq(1, 6)) + 
+ggplot(temp, aes(y = reorder_within(from, number, type), x = number, fill = type)) + 
+  geom_bar(stat = 'identity', position = 'dodge', alpha = 0.9) +
+  facet_wrap(~type, scales = 'free_y') + 
+  scale_x_continuous(name = '萬人',
+                     breaks = c(seq(0, 10, 5), seq(20, 60, 10))) + 
+  scale_y_reordered() + 
+  scale_fill_brewer(palette = 'Set1') + 
   ylab('') + 
   theme(panel.grid.minor.y = element_blank(),
-        panel.grid.major.y  = element_blank())
+        panel.grid.major.y  = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        legend.position = 'None')
+
+ggsave('neihu_top_origin.png', width = 16, height = 9, dpi = 500, scale = 0.6)
+
+
+temp = data %>% 
+  dplyr::filter(to %in% c('西湖','港墘')) %>% 
+  dplyr::group_by(date, hour, type) %>% 
+  dplyr::summarise(number = sum(number)) %>% 
+  dplyr::group_by(hour, type) %>% 
+  dplyr::summarise(avg = mean(number),
+                   sd = sd(number)) %>% 
+  dplyr::filter(hour >= 5)
+
+ggplot(temp) +
+  geom_line(aes(x = hour, y = avg, col = type), lwd = 1.1) +
+  geom_ribbon(aes(x = hour, ymin = avg - 1.5 * sd, ymax = avg + 1.5 * sd, group = type, fill = type), alpha = 0.25) + 
+  scale_color_brewer(palette = 'Set1') + 
+  scale_x_continuous(breaks = c(6, 9, 12, 15, 18, 21, 23)) + 
+  theme(panel.grid.minor.y = element_blank(),
+        legend.position = 'bottom',
+        legend.direction = 'horizontal') 
+
+ggsave('neihu_hourly_passenger.png', width = 16, height = 9, dpi = 500, scale = 0.6)
+
+
+temp = data %>% 
+  dplyr::filter(to %in% c('西湖','港墘')) %>% 
+  dplyr::group_by(date, hour, weekday) %>% 
+  dplyr::summarise(number = sum(number)) %>% 
+  dplyr::group_by(hour, weekday) %>% 
+  dplyr::summarise(avg = mean(number),
+                   sd = sd(number)) %>% 
+  dplyr::filter(hour >= 5)
+
+ggplot(temp) +
+  geom_line(aes(x = hour, y = avg, col = weekday), lwd = 1.1) +
+  # geom_ribbon(aes(x = hour, ymin = avg - 1.5 * sd, ymax = avg + 1.5 * sd, group = weekday, fill = weekday), alpha = 0.25) + 
+  scale_color_brewer(palette = 'Set1') + 
+  scale_x_continuous(breaks = c(6, 9, 12, 15, 18, 21, 23)) + 
+  theme(panel.grid.minor.y = element_blank(),
+        legend.position = 'bottom',
+        legend.direction = 'horizontal') 
+
+# ggsave('neihu_hourly_passenger.png', width = 16, height = 9, dpi = 500, scale = 0.6)
 
 # 信義區
 
