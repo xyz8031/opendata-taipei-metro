@@ -5,6 +5,8 @@ library(data.table)
 library(stringr)
 library(forcats)
 library(lubridate)
+library(treemap)
+library(d3treeR)
 setwd('~/Documents/Github/opendata-taipei-metro/')
 
 options(scipen = 999)
@@ -18,7 +20,8 @@ station = read.csv('https://raw.githubusercontent.com/repeat/northern-taiwan-met
                 station = station_name_tw) %>% 
   dplyr::mutate(district = str_sub(address, 4, 6)) %>% 
   dplyr::select(line, station, district) %>% 
-  dplyr::filter(line != '環狀線' & line != '機場線')
+  dplyr::filter(line != '環狀線' & line != '機場線') %>% 
+  distinct()
 
 transfer = station %>% 
   dplyr::group_by(station) %>% 
@@ -30,28 +33,11 @@ station$line = ifelse(station$station %in% transfer$station, '轉乘站', statio
 cols <- c("文湖線" = '#c48c31', "淡水信義線" = '#e3002c', "松山新店線" = '#008659',
           "中和新蘆線" = '#f8b61c', "板南線" = '#0070bd', '轉乘站' = 'black')
 
-ggplot(station) + 
-  geom_point(aes(x = lon, y = lat, col = line)) + 
-  scale_color_manual(values = cols) + 
-  theme(legend.position = 'None',
-        panel.grid.minor = element_blank())
-
-#
-temp = data %>%
-  pivot_longer(cols = c('from', 'to'),
-               names_to = 'direction',
-               values_to = 'station') %>% 
-  dplyr::group_by(date, station, direction, type) %>% 
-  dplyr::summarise(number = sum(number)) 
-
-temp$station = fct_reorder(temp$station, temp$number, .fun = max)
-
-temp %>% 
-  dplyr::filter(station %in% transfer$station) %>% 
-  ggplot() +
-  geom_boxplot(aes(x = station, y = number, color = type), position = 'dodge') + 
-  facet_wrap(~direction, ncol = 1) + 
-  theme(panel.grid.minor = element_blank())
+# ggplot(station) + 
+#   geom_point(aes(x = lon, y = lat, col = line)) + 
+#   scale_color_manual(values = cols) + 
+#   theme(legend.position = 'None',
+#         panel.grid.minor = element_blank())
 
 # time series by date by station
 temp = data %>% 
@@ -83,7 +69,6 @@ ggplot() +
   scale_color_manual(values = cols) + 
   theme(legend.position = 'None',
         panel.grid.minor = element_blank())
-
 # ggsave('num_by_station_and_hour.png', width = 16, height = 9, units = 'in', dpi = 500, scale = 0.6)
 
 # 總運量排名
@@ -92,17 +77,19 @@ temp = data %>%
                names_to = 'direction',
                values_to = 'station') %>% 
   dplyr::group_by(station, direction) %>% 
-  dplyr::summarise(number = sum(number)) %>% 
-  merge(station, by = 'station')
+  dplyr::summarise(number = sum(number) / 10000) %>% 
+  merge(station %>% dplyr::select(-line) %>% distinct(), by = 'station')
 
 temp$station = fct_reorder(temp$station, abs(temp$number))
 
 ggplot() + 
   geom_point(data = temp %>% dplyr::filter(direction == 'from'), aes(x = number, y = station, col = direction), stat = 'identity', position = 'stack') + 
   geom_point(data = temp %>% dplyr::filter(direction == 'to'), aes(x = number, y = station, col = direction), stat = 'identity', position = 'stack') + 
+  # geom_pointrange(aes(y = station, xmin = , xmax = )) + 
   scale_color_brewer(palette = 'Set1') + 
-  facet_wrap(~line, scales = 'free') + 
-  theme(panel.grid.minor = element_blank())
+  facet_wrap(~district, scales = 'free') +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major.y = element_blank())
 
 
 
